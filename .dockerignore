@@ -1,0 +1,11 @@
+.git
+.github
+**/__pycache__
+*.pyc
+.pytest_cache
+venv/
+.venv/
+fastapi_lab1_env/
+model/*.pkl
+model/*.json
+tests/

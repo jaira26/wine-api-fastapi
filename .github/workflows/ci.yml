@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Train model and enforce accuracy gate
+        run: python -m src.train
+
+      - name: Run tests
+        run: pytest -v
+
+      - name: Upload metrics
+        uses: actions/upload-artifact@v4
+        with:
+          name: model-metrics
+          path: model/metrics.json
+
+  docker:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t wine-api .
+
+      - name: Run container
+        run: docker run -d -p 8000:8000 --name wine-api wine-api
+
+      - name: Wait for API
+        run: |
+          for i in $(seq 1 20); do
+            if curl -sf http://localhost:8000/health; then exit 0; fi
+            sleep 2
+          done
+          docker logs wine-api
+          exit 1
+
+      - name: Smoke test prediction
+        run: |
+          curl -sf -X POST http://localhost:8000/predict \
+            -H "Content-Type: application/json" \
+            -d '{"alcohol":14.23,"malic_acid":1.71,"ash":2.43,"alcalinity_of_ash":15.6,"magnesium":127,"total_phenols":2.8,"flavanoids":3.06,"nonflavanoid_phenols":0.28,"proanthocyanins":2.29,"color_intensity":5.64,"hue":1.04,"od280_od315":3.92,"proline":1065}'
+
+      - name: Stop container
+        if: always()
+        run: docker rm -f wine-api
